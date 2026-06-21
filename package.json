@@ -1,0 +1,27 @@
+{
+  "name": "valence-oauth-2",
+  "version": "1.0.0",
+  "description": "Brightspace workshop demo: migrate from Valence ID/Key auth to OAuth2",
+  "main": "src/examples.js",
+  "type": "module",
+  "scripts": {
+    "demo:legacy": "node src/examples.js legacy",
+    "demo:oauth2": "node src/examples.js oauth2",
+    "demo:migrate": "node src/examples.js migrate",
+    "demo:all": "node src/examples.js all"
+  },
+  "keywords": [
+    "brightspace",
+    "valence",
+    "oauth2",
+    "workshop"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "axios": "^1.11.0",
+    "dotenv": "^16.6.1",
+    "eslint": "^10.5.0",
+    "eslint-config-brightspace": "^4.0.0"
+  }
+}
