@@ -1,4 +1,7 @@
 import axios from 'axios';
+import { readFile } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
+import { SignJWT, importPKCS8 } from 'jose';
 
 function env(name) {
 	return process.env[name] || '';
@@ -18,13 +21,14 @@ async function getAccessToken() {
 		return {
 			accessToken: staticToken,
 			source: 'env',
+			clientAuthMethod: 'n/a',
 		};
 	}
 
 	const tokenUrl = requireEnv('OAUTH2_TOKEN_URL');
 	const clientId = requireEnv('OAUTH2_CLIENT_ID');
-	const clientSecret = requireEnv('OAUTH2_CLIENT_SECRET');
 	const scope = env('OAUTH2_SCOPE');
+	const clientAuthMethod = env('OAUTH2_CLIENT_AUTH_METHOD') || 'client_secret_basic';
 
 	const body = new URLSearchParams();
 	body.set('grant_type', 'client_credentials');
@@ -32,16 +36,26 @@ async function getAccessToken() {
 		body.set('scope', scope);
 	}
 
-	const response = await axios.post(tokenUrl, body.toString(), {
+	const requestConfig = {
 		headers: {
 			'Content-Type': 'application/x-www-form-urlencoded',
 		},
-		auth: {
+		timeout: Number(process.env.DEMO_TIMEOUT_MS || '15000'),
+	};
+
+	if (clientAuthMethod === 'private_key_jwt') {
+		body.set('client_id', clientId);
+		body.set('client_assertion_type', 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer');
+		body.set('client_assertion', await buildClientAssertion(tokenUrl, clientId));
+	} else {
+		const clientSecret = requireEnv('OAUTH2_CLIENT_SECRET');
+		requestConfig.auth = {
 			username: clientId,
 			password: clientSecret,
-		},
-		timeout: Number(process.env.DEMO_TIMEOUT_MS || '15000'),
-	});
+		};
+	}
+
+	const response = await axios.post(tokenUrl, body.toString(), requestConfig);
 
 	if (!response.data || !response.data.access_token) {
 		throw new Error('Token response did not contain access_token');
@@ -50,9 +64,47 @@ async function getAccessToken() {
 	return {
 		accessToken: response.data.access_token,
 		source: 'client_credentials',
+		clientAuthMethod,
 		expiresIn: response.data.expires_in,
 		tokenType: response.data.token_type,
 	};
+}
+
+async function buildClientAssertion(tokenUrl, clientId) {
+	const algorithm = env('OAUTH2_PRIVATE_KEY_ALG') || 'RS256';
+	const keyId = env('OAUTH2_PRIVATE_KEY_KID');
+	const issuer = env('OAUTH2_CLIENT_ASSERTION_ISS') || clientId;
+	const subject = env('OAUTH2_CLIENT_ASSERTION_SUB') || clientId;
+	const privateKeyPem = await loadPrivateKeyPem();
+
+	const key = await importPKCS8(privateKeyPem, algorithm);
+	const protectedHeader = {
+		alg: algorithm,
+		typ: 'JWT',
+	};
+	if (keyId) {
+		protectedHeader.kid = keyId;
+	}
+
+	return new SignJWT({})
+		.setProtectedHeader(protectedHeader)
+		.setIssuer(issuer)
+		.setSubject(subject)
+		.setAudience(tokenUrl)
+		.setJti(randomUUID())
+		.setIssuedAt()
+		.setExpirationTime('5m')
+		.sign(key);
+}
+
+async function loadPrivateKeyPem() {
+	const inlinePem = env('OAUTH2_PRIVATE_KEY_PEM');
+	if (inlinePem) {
+		return inlinePem.replace(/\\n/g, '\n');
+	}
+
+	const keyPath = requireEnv('OAUTH2_PRIVATE_KEY_PATH');
+	return readFile(keyPath, 'utf8');
 }
 
 export async function buildOAuth2Header() {
@@ -65,6 +117,7 @@ export async function buildOAuth2Header() {
 		},
 		tokenMeta: {
 			source: token.source,
+			clientAuthMethod: token.clientAuthMethod,
 			expiresIn: token.expiresIn,
 			tokenType: token.tokenType,
 		},

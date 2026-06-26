@@ -36,6 +36,13 @@ In this demo, you can inspect the exact `stringToSign`, signature, nonce, and ti
 
 In this demo, you can inspect token source metadata and request header preview.
 
+For client credentials, this demo supports two client authentication methods:
+
+- `client_secret_basic`: client ID + secret at token endpoint.
+- `private_key_jwt`: signed client assertion JWT for tenants that require JWKS-backed clients.
+
+If Brightspace app setup asks for a JWKS URL, choose `private_key_jwt` in your env config.
+
 ## Legacy vs OAuth2 at a glance
 
 | Area | Legacy ID/Key | OAuth2 |
@@ -60,6 +67,54 @@ npm run demo:legacy
 npm run demo:oauth2
 npm run demo:migrate
 ```
+
+If using JWKS/private_key_jwt, set `OAUTH2_CLIENT_AUTH_METHOD=private_key_jwt` and provide your private key path or PEM in `.env`.
+
+## Create JWKS for Brightspace (private_key_jwt)
+
+Generate a keypair and JWKS file:
+
+```bash
+npm run jwks:generate
+```
+
+Optional: generate with GitHub owner/repo metadata so the script prints your expected Pages URL:
+
+```bash
+node src/generate-jwks.js --githubOwner YOUR_GITHUB_USER --githubRepo YOUR_REPO_NAME
+```
+
+The script creates:
+
+- `jwks/public/jwks.json` (safe to publish)
+- `jwks/private/private-key.pem` (keep private, never commit)
+
+Then update `.env`:
+
+```bash
+OAUTH2_CLIENT_AUTH_METHOD=private_key_jwt
+OAUTH2_PRIVATE_KEY_PATH=/absolute/path/to/your/repo/jwks/private/private-key.pem
+OAUTH2_PRIVATE_KEY_KID=<kid printed by script>
+OAUTH2_PRIVATE_KEY_ALG=RS256
+```
+
+## Publish JWKS with GitHub Pages
+
+1. Commit and push only `jwks/public/jwks.json`.
+2. In your GitHub repo, open Settings -> Pages.
+3. Under Build and deployment:
+	- Source: Deploy from a branch
+	- Branch: `main` (or your default branch)
+	- Folder: `/ (root)`
+4. Save and wait for Pages to publish.
+5. Your JWKS URL will be:
+	- `https://<github-user>.github.io/<repo-name>/jwks/public/jwks.json`
+6. Paste that full URL into Brightspace app registration as the JWKS URL.
+
+Quick check before pasting into Brightspace:
+
+- Open the JWKS URL in browser and confirm it returns JSON with a `keys` array.
+- Confirm `kid` in the JWKS matches `OAUTH2_PRIVATE_KEY_KID` in `.env`.
 
 ## Workshop flow (suggested)
 
