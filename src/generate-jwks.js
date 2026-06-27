@@ -33,14 +33,13 @@ function buildGithubPagesUrl(owner, repo, publicPath) {
 
 async function main() {
 	const args = parseArgs(process.argv.slice(2));
-	const keyDir = resolve(process.cwd(), args.outDir || 'jwks');
-	const outDirName = args.outDir || 'jwks';
-	const publicDir = resolve(keyDir, 'public');
-	const privateDir = resolve(keyDir, 'private');
+	const docsDir = resolve(process.cwd(), 'docs');
+	const keysDir = resolve(process.cwd(), 'jwks');
+	const privateDir = resolve(keysDir, 'private');
 	const publicFileName = args.publicFile || 'jwks.json';
-	const publicPath = resolve(publicDir, publicFileName);
+	const publicPath = resolve(docsDir, publicFileName);
 	const privatePath = resolve(privateDir, 'private-key.pem');
-	const publicRepoPath = `${outDirName}/public/${publicFileName}`;
+	const publicRepoPath = publicFileName;
 	const kid = args.kid || randomUUID();
 	const algorithm = args.alg || 'RS256';
 
@@ -61,7 +60,7 @@ async function main() {
 		keys: [publicJwk],
 	};
 
-	await mkdir(publicDir, { recursive: true });
+	await mkdir(docsDir, { recursive: true });
 	await mkdir(privateDir, { recursive: true });
 	await writeFile(publicPath, `${JSON.stringify(jwks, null, 2)}\n`, 'utf8');
 	await writeFile(privatePath, `${privateKeyPem}\n`, 'utf8');
