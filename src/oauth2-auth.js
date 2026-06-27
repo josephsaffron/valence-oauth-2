@@ -72,7 +72,10 @@ async function getAccessToken() {
 
 async function buildClientAssertion(tokenUrl, clientId) {
 	const algorithm = env('OAUTH2_PRIVATE_KEY_ALG') || 'RS256';
-	const keyId = env('OAUTH2_PRIVATE_KEY_KID');
+	const keyId = env('OAUTH2_PRIVATE_KEY_KID') || env('OAUTH2_PRIVATE_KEY_KEYID');
+	if (!keyId) {
+		throw new Error('Missing required env var for private_key_jwt: OAUTH2_PRIVATE_KEY_KID');
+	}
 	const issuer = env('OAUTH2_CLIENT_ASSERTION_ISS') || clientId;
 	const subject = env('OAUTH2_CLIENT_ASSERTION_SUB') || clientId;
 	const privateKeyPem = await loadPrivateKeyPem();
@@ -81,10 +84,8 @@ async function buildClientAssertion(tokenUrl, clientId) {
 	const protectedHeader = {
 		alg: algorithm,
 		typ: 'JWT',
+		kid: keyId,
 	};
-	if (keyId) {
-		protectedHeader.kid = keyId;
-	}
 
 	return new SignJWT({})
 		.setProtectedHeader(protectedHeader)
