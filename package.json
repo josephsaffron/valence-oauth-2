@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "jwks:generate": "node src/generate-jwks.js",
+    "debug:assertion": "node src/debug-assertion.js",
     "demo:legacy": "node src/examples.js legacy",
     "demo:oauth2": "node src/examples.js oauth2",
     "demo:migrate": "node src/examples.js migrate",

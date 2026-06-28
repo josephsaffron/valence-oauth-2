@@ -3,6 +3,22 @@ import { readFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { SignJWT, importPKCS8 } from 'jose';
 
+// In-memory token cache: reuses the access token until 60 seconds before expiry.
+// For client_credentials there is no refresh token — just request a new one when expired.
+const tokenCache = {
+	accessToken: null,
+	expiresAt: 0,
+};
+
+const EXPIRY_BUFFER_SECONDS = 60;
+
+function isCachedTokenValid() {
+	if (!tokenCache.accessToken) {
+		return false;
+	}
+	return (Date.now() / 1000) < (tokenCache.expiresAt - EXPIRY_BUFFER_SECONDS);
+}
+
 function env(name) {
 	return process.env[name] || '';
 }
@@ -22,6 +38,17 @@ async function getAccessToken() {
 			accessToken: staticToken,
 			source: 'env',
 			clientAuthMethod: 'n/a',
+			fromCache: false,
+		};
+	}
+
+	if (isCachedTokenValid()) {
+		return {
+			accessToken: tokenCache.accessToken,
+			source: 'client_credentials',
+			clientAuthMethod: env('OAUTH2_CLIENT_AUTH_METHOD') || 'client_secret_basic',
+			expiresIn: Math.round(tokenCache.expiresAt - Date.now() / 1000),
+			fromCache: true,
 		};
 	}
 
@@ -61,12 +88,17 @@ async function getAccessToken() {
 		throw new Error('Token response did not contain access_token');
 	}
 
+	const expiresIn = response.data.expires_in || 3600;
+	tokenCache.accessToken = response.data.access_token;
+	tokenCache.expiresAt = (Date.now() / 1000) + expiresIn;
+
 	return {
 		accessToken: response.data.access_token,
 		source: 'client_credentials',
 		clientAuthMethod,
-		expiresIn: response.data.expires_in,
+		expiresIn,
 		tokenType: response.data.token_type,
+		fromCache: false,
 	};
 }
 
@@ -78,6 +110,7 @@ async function buildClientAssertion(tokenUrl, clientId) {
 	}
 	const issuer = env('OAUTH2_CLIENT_ASSERTION_ISS') || clientId;
 	const subject = env('OAUTH2_CLIENT_ASSERTION_SUB') || clientId;
+	const audience = env('OAUTH2_CLIENT_ASSERTION_AUD') || tokenUrl;
 	const privateKeyPem = await loadPrivateKeyPem();
 
 	const key = await importPKCS8(privateKeyPem, algorithm);
@@ -91,7 +124,7 @@ async function buildClientAssertion(tokenUrl, clientId) {
 		.setProtectedHeader(protectedHeader)
 		.setIssuer(issuer)
 		.setSubject(subject)
-		.setAudience(tokenUrl)
+		.setAudience(audience)
 		.setJti(randomUUID())
 		.setIssuedAt()
 		.setExpirationTime('5m')
@@ -121,6 +154,7 @@ export async function buildOAuth2Header() {
 			clientAuthMethod: token.clientAuthMethod,
 			expiresIn: token.expiresIn,
 			tokenType: token.tokenType,
+			fromCache: token.fromCache,
 		},
 	};
 }
